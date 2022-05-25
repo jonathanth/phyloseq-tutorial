@@ -1,0 +1,224 @@
+---
+title: "Phyloseq vignette"
+author: "Casper Sahl Poulsen"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+always_allow_html: yes
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    toc: yes
+    toc_depth: 5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      warning = FALSE, 
+                      message = FALSE,
+                      fig.align = "center")
+```
+
+## Introduction
+Running through the phyloseq vignette see also phyloseq-tutorial from Jonathan and cloned repo (I had to put it on my google drive not allowed to place on NAS).  
+navigate to file location and git clone
+https://www.bioconductor.org/packages/devel/bioc/vignettes/phyloseq/inst/doc/phyloseq-analysis.html
+```{r}
+vignette("phyloseq_analysis")
+```
+
+
+### Setup
+#### Packages
+
+
+
+
+#### Functions
+```{r}
+library("phyloseq")
+library("ggplot2")
+
+theme_set(theme_bw()) #ggplot2 theme
+```
+
+```{r}
+remotes::install_github("jonathanth/copiome")
+library(copiome)
+make_mradat(GP)
+?make_mradat
+```
+
+#### Data
+```{r}
+#Vignette
+vignette("phyloseq-basics")
+data(GlobalPatterns)
+GP<-GlobalPatterns
+rm(GlobalPatterns)
+GP
+
+#My own data
+### Load previous dataset
+load("/Volumes/Research/Microbiology/Shared/BIOMAP/Data/Skin_COPSAC_phyloseq_no_contamination.rdata")
+my_phy<-Skin_COPSAC_phylo_microbiem_combined_ng
+rm(Skin_COPSAC_phylo_microbiem_combined_ng)
+my_phy
+```
+
+###Analyses
+Experiment data  
+otu_table = OTU table / OTU abundance  
+sample_data = Metadata / sample variables  
+tax_table = Feature table / Taxonomy table  
+phy_tree = Phylogenetic tree 
+refseq = Reference Seq / XStringSet
+```{r eval=FALSE}
+Micro <- otu_table(GP)@.Data #See below
+Metadata <- sample_data(GP)
+Feature <- tax_table(GP)@.Data
+
+MicroMy <- otu_table(my_phy)@.Data #See below
+MetadataMy <- sample_data(my_phy)
+FeatureMy <- tax_table(my_phy)@.Data
+
+#get_taxa(GP) #Micro2<-get_taxa(GP)
+get_taxa(GP)[1:5,1:5]
+#get_sample(GP)
+get_sample(GP)[1:5,1:5] #same
+#getSamples(GP)
+get_variable(GP)
+```
+
+#### Acessors
+Also above are called accessors
+```{r}
+#Vignette
+nsamples(GP)
+ntaxa(GP)
+rank_names(GP)
+sample_names(GP)
+sample_sums(GP)
+#hist(sample_sums(GP))
+sample_variables(GP)
+taxa_names(GP)[1:5]
+taxa_sums(GP)[1:5]
+
+#My own 
+nsamples(my_phy)
+ntaxa(my_phy)
+rank_names(my_phy)
+sample_names(my_phy)[1:5]
+sample_sums(my_phy)[1:5]
+#hist(sample_sums(my_phy))
+sample_variables(my_phy)
+taxa_names(my_phy)[1:5]
+taxa_sums(my_phy)[1:5]
+```
+
+##### Merge
+See vignette merge functions
+
+##### Prune and clean
+```{r}
+# prune OTUs that are not present in at least one sample
+#phyloseq functions prune_taxa() and prune_samples()
+GP
+GP <- prune_taxa(taxa_sums(GP) > 0, GP)
+GP
+# Define a human-associated versus non-human categorical variable:
+get_variable(GP)
+human <- get_variable(GP, "SampleType") %in% c("Feces", "Mock", "Skin", "Tongue")
+# Add new human variable to sample data:
+sample_data(GP)$human <- factor(human)
+get_variable(GP)
+```
+
+##### Simple exploratory graphics
+```{r}
+alpha_meas = c("Observed", "Chao1", "ACE", "Shannon", "Simpson", "InvSimpson")
+(p <- plot_richness(GP, "human", "SampleType", measures=alpha_meas))
+
+p + geom_boxplot(data=p$data, aes(x=human, y=value, color=NULL), alpha=0.1)
+
+GP.chl <- subset_taxa(GP, Phylum=="Chlamydiae")
+plot_tree(GP.chl, color="SampleType", shape="Family", label.tips="Genus", size="Abundance")
+
+get_variable(my_phy)
+tax_table(my_phy)@.Data
+my_phy.chl <- subset_taxa(my_phy, Phylum=="Proteobacteria")
+plot_tree(my_phy.chl, color="delivery", shape="Cohort", label.tips="Genus", size="Abundance")
+
+```
+
+
+##### Exploratory bar plots 
+```{r}
+data(enterotype)
+enterotype
+
+par(mar = c(10, 4, 4, 2) + 0.1) # make more room on bottom margin
+N <- 30
+barplot(sort(taxa_sums(enterotype), TRUE)[1:N]/nsamples(enterotype), las=2)
+
+rank_names(enterotype)
+rank_names(my_phy)
+
+TopNOTUs <- names(sort(taxa_sums(enterotype), TRUE)[1:10]) 
+ent10   <- prune_taxa(TopNOTUs, enterotype)
+print(ent10) #phyloseq object with 10 most abundant taxa
+
+sample_variables(ent10)
+
+plot_bar(ent10, "SeqTech", fill="Enterotype", facet_grid=~Genus)
+
+```
+
+##### Exploratory Heat Map
+```{r}
+data("GlobalPatterns")
+gpac <- subset_taxa(GlobalPatterns, Phylum=="Crenarchaeota")
+(p <- plot_heatmap(gpac, "NMDS", "bray", "SampleType", "Family")) #Also plots when parenthesis
+
+p$scales$scales[[1]]$name <- "My X-Axis"
+p$scales$scales[[2]]$name <- "My Y-Axis"
+print(p)
+```
+
+##### Microbiome Network Representation
+```{r}
+data(enterotype)
+plot_net(enterotype, maxdist=0.2, color="SeqTech", shape="Enterotype")
+
+plot_net(enterotype, maxdist=0.4, color="SeqTech", shape="Enterotype")
+
+plot_net(enterotype, maxdist=0.8, color="SeqTech", shape="Enterotype")
+```
+
+##### Ordination Methods
+```{r}
+my.physeq <- import("Biom", BIOMfilename="myBiomFile.biom")
+my.ord    <- ordinate(my.physeq)
+plot_ordination(my.physeq, my.ord, color="myFavoriteVarible")
+```
+
+
+#####
+```{r}
+remotes::install_github("jonathanth/copiome")
+library(copiome)
+make_mradat(GP)
+?make_mradat
+```
+
+
+## Additional
+### Session information
+```{r session_info}
+sessionInfo()
+```
+
+### This document was processed on: 
+```{r date}
+Sys.Date()
+```
