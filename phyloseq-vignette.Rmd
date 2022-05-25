@@ -20,21 +20,19 @@ knitr::opts_chunk$set(echo = TRUE,
 ```
 
 ## Introduction
-Running through the phyloseq vignette see also phyloseq-tutorial from Jonathan and cloned repo (I had to put it on my google drive not allowed to place on NAS).  
-navigate to file location and git clone
-https://www.bioconductor.org/packages/devel/bioc/vignettes/phyloseq/inst/doc/phyloseq-analysis.html
+Running through the phyloseq vignette https://www.bioconductor.org/packages/devel/bioc/vignettes/phyloseq/inst/doc/phyloseq-analysis.html  
+See also phyloseq-tutorial from Jonathan and cloned repo (I had to put it on my google drive not allowed to place on NAS???).  
+navigate to wanted file location and git clone
+
 ```{r}
 vignette("phyloseq_analysis")
+
+#Not same as online vignette, important comments in text not copied
 ```
 
 
 ### Setup
 #### Packages
-
-
-
-
-#### Functions
 ```{r}
 library("phyloseq")
 library("ggplot2")
@@ -42,12 +40,10 @@ library("ggplot2")
 theme_set(theme_bw()) #ggplot2 theme
 ```
 
-```{r}
-remotes::install_github("jonathanth/copiome")
-library(copiome)
-make_mradat(GP)
-?make_mradat
-```
+
+#### Functions
+See copiome 
+
 
 #### Data
 ```{r}
@@ -197,18 +193,170 @@ plot_net(enterotype, maxdist=0.8, color="SeqTech", shape="Enterotype")
 
 ##### Ordination Methods
 ```{r}
-my.physeq <- import("Biom", BIOMfilename="myBiomFile.biom")
-my.ord    <- ordinate(my.physeq)
-plot_ordination(my.physeq, my.ord, color="myFavoriteVarible")
+#my.physeq <- import("Biom", BIOMfilename="myBiomFile.biom")
+#my.ord    <- ordinate(my.physeq)
+#plot_ordination(my.physeq, my.ord, color="myFavoriteVarible")
+
+#help(import)
+#help(ordinate)
+#help(distance)
+#help(plot_ordination)
+```
+
+##### PCoA
+```{r}
+#GPUF <- UniFrac(GlobalPatterns)
+
+#Load the pre-computed distance matrix GPUF
+
+load(system.file("doc", "Unweighted_UniFrac.RData", package="phyloseq"))
+GloPa.pcoa = ordinate(GlobalPatterns, method="PCoA", distance=GPUF)
+
+plot_scree(GloPa.pcoa, "Scree plot for Global Patterns, UniFrac/PCoA")
+(p12 <- plot_ordination(GlobalPatterns, GloPa.pcoa, "samples", color="SampleType") + 
+  geom_point(size=5) + geom_path() + scale_colour_hue(guide = FALSE) )
+
+(p13 <- plot_ordination(GlobalPatterns, GloPa.pcoa, "samples", axes=c(1, 3),
+  color="SampleType") + geom_line() + geom_point(size=5) )
+
+(p13 <- plot_ordination(GlobalPatterns, GloPa.pcoa, "samples", axes=c(2, 3),
+  color="SampleType") + geom_line() + geom_point(size=5) )
+```
+
+##### non-metric Multi-Dimensional Scaling (NMDS)
+```{r}
+# perform NMDS, set to 2 axes
+GP.NMDS <- ordinate(GlobalPatterns, "NMDS", GPUF)
+
+(p <- plot_ordination(GlobalPatterns, GP.NMDS, "samples", color="SampleType") +
+  geom_line() + geom_point(size=5) )
+```
+
+##### Correspondance analysis (CA)
+```{r}
+# Take a subset of the GP dataset, top 200 species
+topsp <- names(sort(taxa_sums(GlobalPatterns), TRUE)[1:200])
+GP    <- prune_taxa(topsp, GlobalPatterns)
+# Subset further to top 5 phyla, among the top 200 OTUs.
+top5ph <- sort(tapply(taxa_sums(GP), tax_table(GP)[, "Phylum"], sum), decreasing=TRUE)[1:5]
+GP     <- subset_taxa(GP, Phylum %in% names(top5ph))
+# Re-add human variable to sample data:
+sample_data(GP)$human <- factor(human)
+
+# Now perform a unconstrained correspondence analysis
+gpca  <- ordinate(GP, "CCA")
+# Scree plot
+plot_scree(gpca, "Scree Plot for Global Patterns Correspondence Analysis")
+
+(p12 <- plot_ordination(GP, gpca, "samples", color="SampleType") + 
+  geom_line() + geom_point(size=5) )
+
+(p34 <- plot_ordination(GP, gpca, "samples", axes=c(3, 4), color="SampleType") + 
+  geom_line() + geom_point(size=5) )
+
+p1  <- plot_ordination(GP, gpca, "species", color="Phylum")
+(p1 <- ggplot(p1$data, p1$mapping) + geom_point(size=5, alpha=0.5) + 
+  facet_wrap(~Phylum) +  scale_colour_hue(guide = FALSE) )
+
+(p3 <- ggplot(p1$data, p1$mapping) + geom_density2d() +
+  facet_wrap(~Phylum) +  scale_colour_hue(guide = FALSE) )
+
+
+library("reshape2")
+# Melt the species-data.frame, DF, to facet each CA axis separately
+mdf <- melt(p1$data[, c("CA1", "CA2", "Phylum", "Family", "Genus")], 
+            id=c("Phylum", "Family", "Genus") )
+# Select some special outliers for labelling
+LF <- subset(mdf, variable=="CA2" & value < -1.0)
+# build plot: boxplot summaries of each CA-axis, with labels
+p <- ggplot(mdf, aes(Phylum, value, color=Phylum)) + 
+  geom_boxplot() + 
+  facet_wrap(~variable, 2) + 
+  scale_colour_hue(guide = FALSE) +
+  theme_bw() + 
+  theme( axis.text.x = element_text(angle = -90, vjust = 0.5) )
+# Add the text label layer, and render ggplot graphic
+(p <- p + geom_text(data=subset(LF, !is.na(Family)),
+  mapping = aes(Phylum, value+0.1, color=Phylum, label=Family), 
+  vjust=0,
+  size=2))
+
+plot_bar(GP, x="human", fill="SampleType", facet_grid= ~ Phylum)
+```
+
+##### Double Principle Coordinate Analysis (DPCoA)
+```{r}
+# Perform ordination
+GP.dpcoa <- ordinate(GP, "DPCoA") 
+# Generate default ordination bi-plot
+pdpcoa <- 
+  plot_ordination(
+    physeq = GP, 
+    ordination = GP.dpcoa, 
+    type="biplot",
+    color="SampleType", 
+    shape="Phylum")
+# Adjust the shape scale manually 
+# to make taxa hollow and samples filled (advanced)
+shape.fac <- pdpcoa$data$Phylum
+man.shapes <- c(19, 21:25)
+names(man.shapes) <- c("Samples", levels(shape.fac)[levels(shape.fac)!="Samples"])
+p2dpcoa <- pdpcoa + scale_shape_manual(values=man.shapes)
+p2dpcoa
+
+# Show just Samples or just Taxa
+plot_ordination(GP, GP.dpcoa, type="taxa", shape="Phylum")
+plot_ordination(GP, GP.dpcoa, type="samples", color="SampleType")
+
+# Split
+plot_ordination(GP, GP.dpcoa, type="split",
+                color="SampleType", shape="Phylum") +
+  ggplot2::scale_colour_discrete()
+```
+##### Distance Methods
+```{r}
+data(esophagus)
+esophagus
+distance(esophagus, "bray") 
+
+distance(esophagus, "wunifrac") # weighted UniFrac
+
+distance(esophagus, "jaccard") # vegdist jaccard
+
+distance(esophagus, "g")
+
+#Fast versions of unifrac. Also have internal chetafrac
+distance(esophagus, "wUniFrac")
+distance(esophagus, "uUniFrac")
+```
+
+##### Hierarchical Clustering
+```{r}
+load(system.file("doc", "Unweighted_UniFrac.RData", package="phyloseq"))
+# Manually define color-shading vector based on sample type.
+colorScale    <- rainbow(length(levels(get_variable(GlobalPatterns, "SampleType"))))
+cols          <- colorScale[get_variable(GlobalPatterns, "SampleType")] 
+GP.tip.labels <- as(get_variable(GlobalPatterns, "SampleType"), "character")
+# This is the actual hierarchical clustering call, specifying average-link clustering
+GP.hclust     <- hclust(GPUF, method="average")
+plot(GP.hclust, col=cols)
 ```
 
 
-#####
+##### copiome
+Jonathan have added some utility functions trying some of them out  
+https://github.com/jonathanth/copiome
+
 ```{r}
 remotes::install_github("jonathanth/copiome")
 library(copiome)
+#??copiome
 make_mradat(GP)
 ?make_mradat
+
+round(3.9999, 3)
+roundex(3.9999, 3)
+
 ```
 
 
